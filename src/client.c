@@ -3,6 +3,8 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <string.h>
+#include <time.h>
 
 #include "client.h"
 
@@ -14,20 +16,31 @@ int grandom(int min, int max)
 char *create_rrq(char *filename)
 {
   char *packet;
-  packet = malloc(2 + strlen(filename) + 1 + strlen(MODE));
-  memset(packet, 0, sizeof packet);
-  strcat(packet, RRQ);
-  strcat(packet, filename);
+  int packet_size = 2 + (int) strlen(filename) + 1 + (int) strlen(MODE) + 1;
+
+  packet = malloc(packet_size);
+  memset(packet, 0, packet_size);
+
+  packet = RRQ_OPCODE;
+
+  strncat(&packet[2], filename, strlen(filename));
+  strncat(&packet[2 + strlen(filename) + 1], MODE, 8);
+  packet[strlen(RRQ)+strlen(filename)+1+strlen(MODE)] = '\0';
   return packet;
 }
 
 char *create_ack(char *block_num)
 {
   char *packet;
-  packet = malloc(2 + strlen(block_num));
-  memset(packet, 0, sizeof packet);
-  strcat(packet, "04"); //opcode
-  strcat(packet, block_num);
+  int packet_size = ACK_SIZE;
+  packet = malloc(packet_size);
+  memset(packet, 0, packet_size);
+
+  packet[0] = ACK_OPCODE;
+  
+  packet[2] = block_num[0];
+  packet[3] = block_num[1];
+
   return packet;
 }
 
@@ -56,7 +69,7 @@ int get(char *target, char *filename)
     return 1;
   }
 
-  for (temp_sock = servinfo; temp_sock != NULL; temp_sock->ai_next)
+  for (temp_sock = servinfo; temp_sock != NULL; temp_sock = temp_sock->ai_next)
   {
     if ((fd = socket(temp_sock->ai_family, temp_sock->ai_socktype, temp_sock->ai_protocol)) == -1)
       continue;
@@ -69,39 +82,15 @@ int get(char *target, char *filename)
     return 2;
   }
 
-  // do
-  // {
-  //   sprintf(tID, "%d", grandom(1024, 65535));
-  //   printf(tID);
-
-  //   if ((addrResult = getaddrinfo(target, tID, &hints, &servinfo)) != 0)
-  //   {
-  //     continue;
-  //   }
-
-  //   for (temp_sock = servinfo; temp_sock != NULL; temp_sock->ai_next)
-  //   {
-  //     if ((fd = socket(temp_sock->ai_family, temp_sock->ai_socktype, temp_sock->ai_protocol)) == -1) continue;
-  //     break;
-  //   }
-
-  //   if (temp_sock == NULL) {
-  //     continue;
-  //   }
-
-  //   break;
-  // } while (1);
-
-  printf("%d", fd);
-  printf("\n");
   int numbytes;
   int acknumbytes;
 
   // create RRQ
 
   char *msg = create_rrq(filename);
+  size_t msg_size = 2+strlen(filename)+1+strlen(MODE)+1;
 
-  if ((numbytes = sendto(fd, msg, strlen(msg), 0, temp_sock->ai_addr, temp_sock->ai_addrlen)) == -1)
+  if ((numbytes = sendto(fd, msg, msg_size, 0, temp_sock->ai_addr, temp_sock->ai_addrlen)) == -1)
   {
     perror("CLIENT: sendto");
     exit(1);
@@ -126,25 +115,26 @@ int get(char *target, char *filename)
 
     // ACK
 
-    char block_num[3];
-    strncpy(block_num, recv_buffer + 2, 2);
-    block_num[2] = '\0';
+    char block_num[2];
+
+    block_num[0] = recv_buffer[2];
+    block_num[1] = recv_buffer[3];
 
     char *ack = create_ack(block_num);
 
-    if ((acknumbytes = sendto(fd, ack, strlen(ack), 0, temp_sock->ai_addr, temp_sock->ai_addrlen)) == -1)
+    if ((acknumbytes = sendto(fd, ack, ACK_SIZE, 0, (struct sockaddr *)&their_addr, addr_len)) == -1)
     {
       perror("CLIENT ACK: sendto");
       exit(1);
     }
-    printf("acked");
+    printf("acked: %d%d\n", block_num[0], block_num[1]);
 
-  } while (numbytes > 512);
+  } while (numbytes == 516);
 
   return 0;
 }
 
 int main()
 {
-  get("localhost", "utility.h");
+  get("10.250.10.189", "69", "test3");
 }
