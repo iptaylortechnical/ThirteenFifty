@@ -21,7 +21,9 @@ char *create_rrq(char *filename)
   packet = malloc(packet_size);
   memset(packet, 0, packet_size);
 
-  packet = RRQ_OPCODE;
+  // packet = RRQ_OPCODE;
+  packet[0] = '\0';
+  packet[1] = '\x01';
 
   strncat(&packet[2], filename, strlen(filename));
   strncat(&packet[2 + strlen(filename) + 1], MODE, 8);
@@ -36,7 +38,10 @@ char *create_ack(char *block_num)
   packet = malloc(packet_size);
   memset(packet, 0, packet_size);
 
-  strncpy(packet, ACK_OPCODE, 2);
+
+  // packet[0] = ACK_OPCODE;
+  packet[0] = '\0';
+  packet[1] = '\x04';
   
   packet[2] = block_num[0];
   packet[3] = block_num[1];
