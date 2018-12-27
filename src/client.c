@@ -7,13 +7,9 @@
 
 #include "client.h"
 
-char *create_rrq(char *filename)
+void create_rrq(char *filename, char *packet, int rrq_packet_size)
 {
-  char *packet;
-  int packet_size = 2 + (int)strlen(filename) + 1 + (int)strlen(MODE) + 1;
-
-  packet = malloc(packet_size);
-  memset(packet, 0, packet_size);
+  memset(packet, 0, rrq_packet_size);
 
   // strcpy(packet, RRQ_OPCODE_FIELD);
   packet[0] = 0;
@@ -21,16 +17,12 @@ char *create_rrq(char *filename)
 
   strncat(&packet[2], filename, strlen(filename));
   strncat(&packet[2 + strlen(filename) + 1], MODE, 8);
-  packet[packet_size - 1] = '\0';
-  return packet;
+  packet[rrq_packet_size - 1] = '\0';
 }
 
-char *create_ack(char *block_num)
+void create_ack(char *block_num, char *packet, int ack_packet_size)
 {
-  char *packet;
-  int packet_size = ACK_SIZE;
-  packet = malloc(packet_size);
-  memset(packet, 0, packet_size);
+  memset(packet, 0, ack_packet_size);
 
   // strncpy(packet, ACK_OPCODE_FIELD, OPCODE_SIZE);
 
@@ -39,23 +31,27 @@ char *create_ack(char *block_num)
 
   packet[2] = block_num[0];
   packet[3] = block_num[1];
-
-  return packet;
 }
 
 int get(char *target, char *port, char *filename)
 {
+  // Initializing sockets
   struct addrinfo hints, *servinfo, *temp_sock;
   int addrResult;
   int fd;
-
   memset(&hints, 0, sizeof hints);
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_DGRAM;
-
   struct sockaddr_storage their_addr;
   socklen_t addr_len;
   char recv_buffer[BUFFER_LENGTH];
+
+
+  // Allocating packet buffers
+  size_t rrq_packet_size = 2 + strlen(filename) + 1 + strlen(MODE) + 1;
+  char *rrq_packet = malloc(rrq_packet_size);
+  size_t ack_packet_size = ACK_SIZE;
+  char *ack_packet = malloc(ack_packet_size);
 
   if ((addrResult = getaddrinfo(target, port, &hints, &servinfo)) != 0)
   {
@@ -80,11 +76,10 @@ int get(char *target, char *port, char *filename)
   int acknumbytes;
 
   // create RRQ
-  char *msg = create_rrq(filename);
-  size_t msg_size = 2 + strlen(filename) + 1 + strlen(MODE) + 1;
+  create_rrq(filename, rrq_packet, rrq_packet_size);
 
   // send out RRQ
-  if ((numbytes = sendto(fd, msg, msg_size, 0, temp_sock->ai_addr, temp_sock->ai_addrlen)) == -1)
+  if ((numbytes = sendto(fd, rrq_packet, rrq_packet_size, 0, temp_sock->ai_addr, temp_sock->ai_addrlen)) == -1)
   {
     perror("Sending RRQ");
     exit(1);
@@ -124,13 +119,13 @@ int get(char *target, char *port, char *filename)
       block_num[0] = recv_buffer[2];
       block_num[1] = recv_buffer[3];
 
-      char *ack = create_ack(block_num);
-      if ((acknumbytes = sendto(fd, ack, ACK_SIZE, 0, (struct sockaddr *)&their_addr, addr_len)) == -1)
+      create_ack(block_num, ack_packet, ack_packet_size);
+      if ((acknumbytes = sendto(fd, ack_packet, ack_packet_size, 0, (struct sockaddr *)&their_addr, addr_len)) == -1)
       {
         perror("Sending ACK");
         exit(1);
       }
-      printf("ACKed: %d%d\n", block_num[0], block_num[1]);
+      printf("ACKed: %d\n", block_num[1]);
       break;
 
     case 4:
@@ -143,11 +138,14 @@ int get(char *target, char *port, char *filename)
       char error_msg[strlen(recv_buffer+4)];
       strcpy(error_msg, recv_buffer+4);
 
-      printf("Error: %s\n Message: %s\n", ERROR_CODES[error_code], error_msg);
+      printf("  Error: %s\n  Message: %s\n", ERROR_CODES[error_code], error_msg);
       break;
     }
 
   } while (numbytes == 516);
+
+  free(rrq_packet);
+  free(ack_packet);
 
   return 0;
 }
