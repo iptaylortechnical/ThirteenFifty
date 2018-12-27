@@ -4,14 +4,8 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <string.h>
-#include <time.h>
 
 #include "client.h"
-
-int grandom(int min, int max)
-{
-  return min + (rand() % (max - min));
-}
 
 char *create_rrq(char *filename)
 {
@@ -21,9 +15,7 @@ char *create_rrq(char *filename)
   packet = malloc(packet_size);
   memset(packet, 0, packet_size);
 
-  // packet = RRQ_OPCODE;
-
-  strncpy(packet, RRQ_OPCODE, 2);
+  strncpy(packet, RRQ_OPCODE, OPCODE_SIZE);
 
   strncat(&packet[2], filename, strlen(filename));
   strncat(&packet[2 + strlen(filename) + 1], MODE, 8);
@@ -41,7 +33,7 @@ char *create_ack(char *block_num)
 
   // packet[0] = ACK_OPCODE;
   
-  strncpy(packet, ACK_OPCODE, 2);
+  strncpy(packet, ACK_OPCODE, OPCODE_SIZE);
 
   packet[2] = block_num[0];
   packet[3] = block_num[1];
@@ -64,9 +56,6 @@ int get(char *target, char *port, char *filename)
   struct sockaddr_storage their_addr;
   socklen_t addr_len;
   char recv_buffer[BUFFER_LENGTH];
-
-  char tID[6];
-  srand(time(NULL));
 
   if ((addrResult = getaddrinfo(target, INIT_PORT, &hints, &servinfo)) != 0)
   {
@@ -91,18 +80,16 @@ int get(char *target, char *port, char *filename)
   int acknumbytes;
 
   // create RRQ
-
   char *msg = create_rrq(filename);
   size_t msg_size = 2+strlen(filename)+1+strlen(MODE)+1;
 
+  // send out RRQ
   if ((numbytes = sendto(fd, msg, msg_size, 0, temp_sock->ai_addr, temp_sock->ai_addrlen)) == -1)
   {
     perror("CLIENT: sendto");
     exit(1);
   }
   printf("CLIENT: sent %d bytes to %s\n", numbytes, target);
-
-  // send out RRQ
 
   // loop: listen for DATA, send ACK, each time check for
   do
