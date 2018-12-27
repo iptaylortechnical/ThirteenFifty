@@ -25,7 +25,7 @@ char *create_rrq(char *filename)
 
   strncat(&packet[2], filename, strlen(filename));
   strncat(&packet[2 + strlen(filename) + 1], MODE, 8);
-  packet[strlen(RRQ)+strlen(filename)+1+strlen(MODE)] = '\0';
+  packet[packet_size-1] = '\0';
   return packet;
 }
 
@@ -36,7 +36,7 @@ char *create_ack(char *block_num)
   packet = malloc(packet_size);
   memset(packet, 0, packet_size);
 
-  packet[0] = ACK_OPCODE;
+  strncpy(packet, ACK_OPCODE, 2);
   
   packet[2] = block_num[0];
   packet[3] = block_num[1];
@@ -44,7 +44,7 @@ char *create_ack(char *block_num)
   return packet;
 }
 
-int get(char *target, char *filename)
+int get(char *target, char *port, char *filename)
 {
   // init
   // struct addrinfo hints, *servinfo;
