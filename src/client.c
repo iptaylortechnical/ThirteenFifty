@@ -22,8 +22,8 @@ char *create_rrq(char *filename)
   memset(packet, 0, packet_size);
 
   // packet = RRQ_OPCODE;
-  packet[0] = '\0';
-  packet[1] = '\x01';
+
+  strncpy(packet, RRQ_OPCODE, 2);
 
   strncat(&packet[2], filename, strlen(filename));
   strncat(&packet[2 + strlen(filename) + 1], MODE, 8);
@@ -40,9 +40,9 @@ char *create_ack(char *block_num)
 
 
   // packet[0] = ACK_OPCODE;
-  packet[0] = '\0';
-  packet[1] = '\x04';
   
+  strncpy(packet, ACK_OPCODE, 2);
+
   packet[2] = block_num[0];
   packet[3] = block_num[1];
 
@@ -139,7 +139,18 @@ int get(char *target, char *port, char *filename)
   return 0;
 }
 
-int main()
+int main(int argc, char *argv[])
 {
-  get("10.250.10.189", "69", "test3");
+  if (argc != 4) {
+    printf("Bad usage");
+    return 2;
+  }
+
+  char *target = argv[1];
+  char *port = argv[2];
+  char *file = argv[3];
+
+  printf("Getting %s from %s:%s\n", file, target, port);
+
+  get(target, port, file);
 }

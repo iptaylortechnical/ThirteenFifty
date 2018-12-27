@@ -1,7 +1,7 @@
-CC=gcc
+GCC?=gcc
 
 all: client
 
 client:
 	mkdir -p bin
-	$(CC) -g src/client.c -o bin/t_fifty
+	$(GCC) -g src/client.c -o bin/t_fifty
