@@ -10,16 +10,18 @@
 char *create_rrq(char *filename)
 {
   char *packet;
-  int packet_size = 2 + (int) strlen(filename) + 1 + (int) strlen(MODE) + 1;
+  int packet_size = 2 + (int)strlen(filename) + 1 + (int)strlen(MODE) + 1;
 
   packet = malloc(packet_size);
   memset(packet, 0, packet_size);
 
-  strncpy(packet, RRQ_OPCODE, OPCODE_SIZE);
+  // strcpy(packet, RRQ_OPCODE_FIELD);
+  packet[0] = 0;
+  packet[1] = RRQ_OPCODE;
 
   strncat(&packet[2], filename, strlen(filename));
   strncat(&packet[2 + strlen(filename) + 1], MODE, 8);
-  packet[packet_size-1] = '\0';
+  packet[packet_size - 1] = '\0';
   return packet;
 }
 
@@ -30,10 +32,10 @@ char *create_ack(char *block_num)
   packet = malloc(packet_size);
   memset(packet, 0, packet_size);
 
+  // strncpy(packet, ACK_OPCODE_FIELD, OPCODE_SIZE);
 
-  // packet[0] = ACK_OPCODE;
-  
-  strncpy(packet, ACK_OPCODE, OPCODE_SIZE);
+  packet[0] = 0;
+  packet[1] = ACK_OPCODE;
 
   packet[2] = block_num[0];
   packet[3] = block_num[1];
@@ -43,8 +45,6 @@ char *create_ack(char *block_num)
 
 int get(char *target, char *port, char *filename)
 {
-  // init
-  // struct addrinfo hints, *servinfo;
   struct addrinfo hints, *servinfo, *temp_sock;
   int addrResult;
   int fd;
@@ -57,9 +57,9 @@ int get(char *target, char *port, char *filename)
   socklen_t addr_len;
   char recv_buffer[BUFFER_LENGTH];
 
-  if ((addrResult = getaddrinfo(target, INIT_PORT, &hints, &servinfo)) != 0)
+  if ((addrResult = getaddrinfo(target, port, &hints, &servinfo)) != 0)
   {
-    printf("failed at 1");
+    printf("Could not get address info.");
     return 1;
   }
 
@@ -72,7 +72,7 @@ int get(char *target, char *port, char *filename)
 
   if (temp_sock == NULL)
   {
-    printf("failed at 2");
+    printf("Could not create a socket with those DNS addresses.");
     return 2;
   }
 
@@ -81,45 +81,71 @@ int get(char *target, char *port, char *filename)
 
   // create RRQ
   char *msg = create_rrq(filename);
-  size_t msg_size = 2+strlen(filename)+1+strlen(MODE)+1;
+  size_t msg_size = 2 + strlen(filename) + 1 + strlen(MODE) + 1;
 
   // send out RRQ
   if ((numbytes = sendto(fd, msg, msg_size, 0, temp_sock->ai_addr, temp_sock->ai_addrlen)) == -1)
   {
-    perror("CLIENT: sendto");
+    perror("Sending RRQ");
     exit(1);
   }
-  printf("CLIENT: sent %d bytes to %s\n", numbytes, target);
+  printf("Sent %d bytes to %s on port %s\n", numbytes, target, port);
 
-  // loop: listen for DATA, send ACK, each time check for
+  // loop: listen for DATA, send ACK
   do
   {
     addr_len = sizeof their_addr;
     if ((numbytes = recvfrom(fd, recv_buffer, BUFFER_LENGTH - 1, 0, (struct sockaddr *)&their_addr, &addr_len)) == -1)
     {
-      perror("CLIENT: recvfrom");
+      perror("Receiving packet");
       exit(1);
     }
+    recv_buffer[numbytes] = '\0';
 
     printf("Received %d bytes from server\n", numbytes);
 
-    recv_buffer[numbytes] = '\0';
+    int opcode = recv_buffer[1];
 
-    // ACK
-
-    char block_num[2];
-
-    block_num[0] = recv_buffer[2];
-    block_num[1] = recv_buffer[3];
-
-    char *ack = create_ack(block_num);
-
-    if ((acknumbytes = sendto(fd, ack, ACK_SIZE, 0, (struct sockaddr *)&their_addr, addr_len)) == -1)
+    switch (opcode)
     {
-      perror("CLIENT ACK: sendto");
-      exit(1);
+    case 1:
+      continue;
+      break;
+
+    case 2:
+      continue;
+      break;
+
+    case 3:
+      printf("- DATA packet\n");
+
+      // Send the ACK
+      char block_num[2];
+      block_num[0] = recv_buffer[2];
+      block_num[1] = recv_buffer[3];
+
+      char *ack = create_ack(block_num);
+      if ((acknumbytes = sendto(fd, ack, ACK_SIZE, 0, (struct sockaddr *)&their_addr, addr_len)) == -1)
+      {
+        perror("Sending ACK");
+        exit(1);
+      }
+      printf("ACKed: %d%d\n", block_num[0], block_num[1]);
+      break;
+
+    case 4:
+      continue;
+      break;
+
+    case 5:
+      printf("- ERROR packet\n");
+      int error_code = recv_buffer[3];
+      char error_msg[strlen(recv_buffer+4)];
+      strcpy(error_msg, recv_buffer+4);
+
+      printf("Error: %s\n Message: %s\n", ERROR_CODES[error_code], error_msg);
+      break;
     }
-    printf("acked: %d%d\n", block_num[0], block_num[1]);
 
   } while (numbytes == 516);
 
@@ -128,7 +154,8 @@ int get(char *target, char *port, char *filename)
 
 int main(int argc, char *argv[])
 {
-  if (argc != 4) {
+  if (argc != 4)
+  {
     printf("Bad usage");
     return 2;
   }
