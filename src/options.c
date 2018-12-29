@@ -3,18 +3,7 @@
 #include <string.h>
 
 #include "options.h"
-
-char *ERROR_CODES[] = {
-  "Not defined, see error message (if any).",
-  "File not found.",
-  "Access violation.",
-  "Disk full or allocation exceeded.",
-  "Illegal TFTP operation.",
-  "Unknown transfer ID.",
-  "File already exists.",
-  "No such user."
-  "Options refused."
-};
+#include "client.h"
 
 void create_options(char *rrq_ptr, int rrq_raw_len, struct OPTION options[], int option_count)
 {
@@ -80,6 +69,7 @@ int process_oack(char *oack, int *blocksize_ptr, int *windowsize_ptr)
       break;
 
     char option[strlen(oack + str_place)];
+    option[strlen(oack + str_place)] = '\0';
     strncpy(option, oack + str_place, strlen(oack + str_place));
     str_place += strlen(oack + str_place) + 1;
 
@@ -90,6 +80,7 @@ int process_oack(char *oack, int *blocksize_ptr, int *windowsize_ptr)
     }
 
     char value[strlen(oack + str_place)];
+    value[strlen(oack + str_place)] = '\0';
     strncpy(value, oack + str_place, strlen(oack + str_place));
     str_place += strlen(oack + str_place) + 1;
 
@@ -145,5 +136,5 @@ void create_oack_err(char *error, int error_length)
   error[1] = '\x05'; // Opcode 5
   error[3] = '\x08'; // Error code 8
 
-  strncpy(error + 4, ERROR_CODES[7], strlen(ERROR_CODES[7]));
+  strncpy(error + 4, ERROR_CODES[8], strlen(ERROR_CODES[8]));
 }

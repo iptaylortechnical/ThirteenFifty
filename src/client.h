@@ -1,3 +1,4 @@
+#pragma once
 #include "options.h"
 
 // TFTP opcodes are two bytes fields
@@ -18,6 +19,12 @@
 
 #define MODE "NETASCII"
 #define INIT_PORT "69"
-#define BUFFER_LENGTH 550
+#define DEFAULT_BLOCKSIZE 512
+
+char *ERROR_CODES[9];
+
+// Field sizes
+#define OPCODE_SIZE 2
+#define ACK_SIZE 4
 
 int get(char* target, char* port, char* filename, struct OPTION options[], int option_count);

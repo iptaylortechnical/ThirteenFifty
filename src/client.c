@@ -7,6 +7,18 @@
 
 #include "client.h"
 
+char *ERROR_CODES[] = {
+  "Not defined, see error message (if any).",
+  "File not found.",
+  "Access violation.",
+  "Disk full or allocation exceeded.",
+  "Illegal TFTP operation.",
+  "Unknown transfer ID.",
+  "File already exists.",
+  "No such user.",
+  "Options refused."
+};
+
 int create_rrq(char *filename, char *packet, int rrq_packet_size)
 {
   memset(packet, 0, rrq_packet_size);
@@ -55,7 +67,8 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
   hints.ai_socktype = SOCK_DGRAM;
   struct sockaddr_storage their_addr;
   socklen_t addr_len;
-  char recv_buffer[BLOCKSIZE_OPTION ? BLOCKSIZE_OPTION + 50 : BUFFER_LENGTH];
+  int buffer_length = (BLOCKSIZE_OPTION ? BLOCKSIZE_OPTION : DEFAULT_BLOCKSIZE) + 38;
+  char recv_buffer[buffer_length];
 
   // Allocating packet buffers
   size_t rrq_packet_size = 2 + strlen(filename) + 1 + strlen(MODE) + 1 + option_length;
@@ -98,13 +111,16 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
   }
   printf("Sent %d bytes to %s on port %s\n", numbytes, target, port);
 
+  addr_len = sizeof their_addr;
+
   // loop: listen for DATA, send ACK
   int iter = 0;
   int window_iter = 1;
+  int is_oack = 0;
   do
   {
-    addr_len = sizeof their_addr;
-    if ((numbytes = recvfrom(fd, recv_buffer, BUFFER_LENGTH - 1, 0, (struct sockaddr *)&their_addr, &addr_len)) == -1)
+    is_oack = 0;
+    if ((numbytes = recvfrom(fd, recv_buffer, buffer_length - 1, 0, (struct sockaddr *)&their_addr, &addr_len)) == -1)
     {
       perror("Receiving packet");
       exit(1);
@@ -177,6 +193,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
     {
       if (iter == 0 && options)
       {
+        is_oack = 1;
         printf("- OACK\n");
         if (process_oack(recv_buffer, &BLOCKSIZE_OPTION, &WINDOWSIZE_OPTION) == 0)
         {
@@ -214,7 +231,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
     }
 
     iter++;
-  } while (numbytes == 516);
+  } while (numbytes == BLOCKSIZE_OPTION + 4 || is_oack);
 
   free(rrq_packet);
   free(ack_packet);
@@ -236,15 +253,15 @@ int main(int argc, char *argv[])
 
   printf("Getting %s from %s:%s\n", file, target, port);
 
-  struct OPTION myOptions[1];
+  // struct OPTION myOptions[2];
 
-  myOptions[0].name = "blocksize";
-  myOptions[0].value = "1024";
-  myOptions[0].silent = 0;
+  // myOptions[0].name = "blksize";
+  // myOptions[0].value = "1024";
+  // myOptions[0].silent = 0;
 
   // myOptions[1].name = "windowsize";
   // myOptions[1].value = "4";
   // myOptions[1].silent = 0;
 
-  get(target, port, file, myOptions, 1);
+  get(target, port, file, NULL, 0);
 }

@@ -1,14 +1,8 @@
+#pragma once
 // Options extension, RFC 2347
-
 #define WINDOWSIZE_FLAG "windowsize"
-#define BLOCKSIZE_FLAG "blocksize"
+#define BLOCKSIZE_FLAG "blksize"
 #define OACK_MAX_SIZE 512
-
-char *ERROR_CODES[8];
-
-// Field sizes
-#define OPCODE_SIZE 2
-#define ACK_SIZE 4
 
 struct OPTION {char *name; char *value; int silent;};
 
