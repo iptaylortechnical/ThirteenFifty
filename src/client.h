@@ -20,6 +20,8 @@
 #define MODE "NETASCII"
 #define INIT_PORT "69"
 #define DEFAULT_BLOCKSIZE 512
+#define MAX_RETRIES 4
+#define DEFAULT_TIMEOUT_SECS 1
 
 char *ERROR_CODES[9];
 

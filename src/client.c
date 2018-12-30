@@ -4,20 +4,21 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
+#include <errno.h>
 
 #include "client.h"
 
 char *ERROR_CODES[] = {
-  "Not defined, see error message (if any).",
-  "File not found.",
-  "Access violation.",
-  "Disk full or allocation exceeded.",
-  "Illegal TFTP operation.",
-  "Unknown transfer ID.",
-  "File already exists.",
-  "No such user.",
-  "Options refused."
-};
+    "Not defined, see error message (if any).",
+    "File not found.",
+    "Access violation.",
+    "Disk full or allocation exceeded.",
+    "Illegal TFTP operation.",
+    "Unknown transfer ID.",
+    "File already exists.",
+    "No such user.",
+    "Options refused."};
 
 int create_rrq(char *filename, char *packet, int rrq_packet_size)
 {
@@ -43,10 +44,21 @@ void create_ack(char *block_num, char *packet, int ack_packet_size)
   packet[3] = block_num[1];
 }
 
+int send_ack(int fd, char *ack_packet, int ack_packet_size, struct sockaddr *incoming_addr, int addr_len)
+{
+  int acknumbytes;
+  if ((acknumbytes = sendto(fd, ack_packet, ack_packet_size, 0, incoming_addr, addr_len)) == -1)
+  {
+    perror("Sending ACK");
+    exit(1);
+  }
+  return acknumbytes;
+}
+
 int get(char *target, char *port, char *filename, struct OPTION options[], int option_count)
 {
   // Initializing options
-  int BLOCKSIZE_OPTION = (int)NULL;
+  int BLOCKSIZE_OPTION = DEFAULT_BLOCKSIZE;
   int WINDOWSIZE_OPTION = (int)NULL;
 
   int error_length = 2 + 2 + strlen(ERROR_CODES[7]) + 1;
@@ -59,16 +71,19 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
   }
 
   // Initializing sockets
-  struct addrinfo hints, *servinfo, *temp_sock;
+  struct addrinfo hts, *info, *temp_sock;
   int addrResult;
   int fd;
-  memset(&hints, 0, sizeof hints);
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_DGRAM;
-  struct sockaddr_storage their_addr;
+  memset(&hts, 0, sizeof hts);
+  hts.ai_family = AF_UNSPEC;
+  hts.ai_socktype = SOCK_DGRAM;
+  struct sockaddr_storage incoming_addr;
   socklen_t addr_len;
   int buffer_length = (BLOCKSIZE_OPTION ? BLOCKSIZE_OPTION : DEFAULT_BLOCKSIZE) + 38;
   char recv_buffer[buffer_length];
+
+  // Initialize block numbers
+  char block_num[2];
 
   // Allocating packet buffers
   size_t rrq_packet_size = 2 + strlen(filename) + 1 + strlen(MODE) + 1 + option_length;
@@ -76,13 +91,13 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
   size_t ack_packet_size = ACK_SIZE;
   char *ack_packet = malloc(ack_packet_size);
 
-  if ((addrResult = getaddrinfo(target, port, &hints, &servinfo)) != 0)
+  if ((addrResult = getaddrinfo(target, port, &hts, &info)) != 0)
   {
     printf("Could not get address info.");
     return 1;
   }
 
-  for (temp_sock = servinfo; temp_sock != NULL; temp_sock = temp_sock->ai_next)
+  for (temp_sock = info; temp_sock != NULL; temp_sock = temp_sock->ai_next)
   {
     if ((fd = socket(temp_sock->ai_family, temp_sock->ai_socktype, temp_sock->ai_protocol)) == -1)
       continue;
@@ -111,19 +126,54 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
   }
   printf("Sent %d bytes to %s on port %s\n", numbytes, target, port);
 
-  addr_len = sizeof their_addr;
+  addr_len = sizeof incoming_addr;
+
+  // Configure socket timeout
+  struct timeval timeout;
+  timeout.tv_sec = DEFAULT_TIMEOUT_SECS;
+  timeout.tv_usec = 0;
+  if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0)
+  {
+    perror("Could not set socket timeout");
+  }
 
   // loop: listen for DATA, send ACK
   int iter = 0;
   int window_iter = 1;
   int is_oack = 0;
+  int retry_count = 0;
   do
   {
     is_oack = 0;
-    if ((numbytes = recvfrom(fd, recv_buffer, buffer_length - 1, 0, (struct sockaddr *)&their_addr, &addr_len)) == -1)
+
+    if ((numbytes = recvfrom(fd, recv_buffer, buffer_length - 1, 0, (struct sockaddr *)&incoming_addr, &addr_len)) == -1)
     {
-      perror("Receiving packet");
-      exit(1);
+      if (iter == 0)
+      {
+        printf("Did not receive response to RRQ within %d seconds.\n", DEFAULT_TIMEOUT_SECS);
+        exit(1);
+      }
+
+      if (errno == EAGAIN || errno == ETIMEDOUT)
+      {
+        if (retry_count < MAX_RETRIES)
+        {
+          printf("Timed out, ACKing again. Attempt %d\n", retry_count);
+          create_ack(block_num, ack_packet, ack_packet_size);
+          send_ack(fd, ack_packet, ack_packet_size, (struct sockaddr *)&incoming_addr, addr_len);
+
+          retry_count++;
+          continue;
+        } else {
+          printf("Max retries reached. Exiting.\n");
+          exit(1);
+        }
+      }
+      else
+      {
+        perror("Receiving packet");
+        exit(1);
+      }
     }
     recv_buffer[numbytes] = '\0';
 
@@ -144,6 +194,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
     case 3:
     {
       printf("- DATA packet\n");
+      retry_count = 0;
 
       if (iter == 0 && options)
       {
@@ -156,23 +207,20 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
       {
         window_iter = 1;
         // Send the ACK
-        char block_num[2];
+
         block_num[0] = recv_buffer[2];
         block_num[1] = recv_buffer[3];
 
         create_ack(block_num, ack_packet, ack_packet_size);
-        if ((acknumbytes = sendto(fd, ack_packet, ack_packet_size, 0, (struct sockaddr *)&their_addr, addr_len)) == -1)
-        {
-          perror("Sending ACK");
-          exit(1);
-        }
+        send_ack(fd, ack_packet, ack_packet_size, (struct sockaddr *)&incoming_addr, addr_len);
+
         printf("  ACKed: %d\n", block_num[1]);
-        break;
       }
       else
       {
         window_iter++;
       }
+      break;
     }
     case 4:
       continue;
@@ -200,11 +248,8 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
           // ACK with block num 0
           printf("  options accepted and loaded\n");
           create_ack("\0\0", ack_packet, ack_packet_size);
-          if ((acknumbytes = sendto(fd, ack_packet, ack_packet_size, 0, (struct sockaddr *)&their_addr, addr_len)) == -1)
-          {
-            perror("Sending ACK");
-            exit(1);
-          }
+          send_ack(fd, ack_packet, ack_packet_size, (struct sockaddr *)&incoming_addr, addr_len);
+
           printf("  ACKed: 0\n");
         }
         else
@@ -213,7 +258,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
           char error_packet[error_length];
           create_oack_err(error_packet, error_length);
 
-          if ((sendto(fd, error_packet, error_length, 0, (struct sockaddr *)&their_addr, addr_len)) == -1)
+          if ((sendto(fd, error_packet, error_length, 0, (struct sockaddr *)&incoming_addr, addr_len)) == -1)
           {
             perror("Sending ERROR");
           }
@@ -231,7 +276,8 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
     }
 
     iter++;
-  } while (numbytes == BLOCKSIZE_OPTION + 4 || is_oack);
+  } while (numbytes == BLOCKSIZE_OPTION + 4 || is_oack || retry_count > 0);
+
 
   free(rrq_packet);
   free(ack_packet);
