@@ -8,8 +8,8 @@
 void create_options(char *rrq_ptr, int rrq_raw_len, struct OPTION options[], int option_count)
 {
   int str_place = rrq_raw_len;
-
-  for (int i = 0; i < option_count; i++)
+  int i;
+  for (i = 0; i < option_count; i++)
   {
     strncpy(rrq_ptr + str_place, options[i].name, strlen(options[i].name));
     str_place += strlen(options[i].name) + 1;
@@ -25,8 +25,8 @@ int find_option_length(struct OPTION options[], int option_count)
     return 0;
 
   int option_length = 0;
-
-  for (int i = 0; i < option_count; i++)
+  int i;
+  for (i = 0; i < option_count; i++)
   {
     if (!options[i].silent)
     {
@@ -40,7 +40,8 @@ int find_option_length(struct OPTION options[], int option_count)
 
 void set_option_flags(struct OPTION options[], int option_count, int *blocksize_ptr, int *windowsize_ptr)
 {
-  for (int i = 0; i < option_count; i++)
+  int i;
+  for (i = 0; i < option_count; i++)
   {
     if (strcmp(options[i].name, BLOCKSIZE_FLAG) == 0)
     {
