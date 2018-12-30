@@ -22,6 +22,7 @@
 #define DEFAULT_BLOCKSIZE 512
 #define MAX_RETRIES 4
 #define DEFAULT_TIMEOUT_SECS 1
+#define VERBOSITY 1
 
 char *ERROR_CODES[9];
 
@@ -30,3 +31,4 @@ char *ERROR_CODES[9];
 #define ACK_SIZE 4
 
 int get(char* target, char* port, char* filename, struct OPTION options[], int option_count);
+void print_if_verbose(char *format, ...);

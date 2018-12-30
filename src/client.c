@@ -6,6 +6,7 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+#include <stdarg.h>
 
 #include "client.h"
 
@@ -20,13 +21,24 @@ char *ERROR_CODES[] = {
     "No such user.",
     "Options refused."};
 
+void print_if_verbose(char *format, ...)
+{
+  if (VERBOSITY)
+  {
+    va_list printargs;
+    va_start(printargs, format);
+    vprintf(format, printargs);
+    va_end(printargs);
+  }
+}
+
 int socket_setup(char *target, char *port, struct addrinfo *hts, struct addrinfo *info, struct addrinfo **temp_sock)
 {
 
   int fd;
   if ((getaddrinfo(target, port, hts, &info)) != 0)
   {
-    printf("Could not get address info.");
+    print_if_verbose("Could not get address info.");
     exit(1);
   }
   for ((*temp_sock) = info; (*temp_sock) != NULL; (*temp_sock) = (*temp_sock)->ai_next)
@@ -38,7 +50,7 @@ int socket_setup(char *target, char *port, struct addrinfo *hts, struct addrinfo
 
   if (*temp_sock == NULL)
   {
-    printf("Could not create a socket with those DNS addresses.");
+    print_if_verbose("Could not create a socket with those DNS addresses.");
     exit(2);
   }
 
@@ -134,7 +146,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
 
   // send out RRQ
   numbytes = send_packet(fd, rrq_packet, rrq_packet_size, temp_sock->ai_addr, temp_sock->ai_addrlen, "RRQ");
-  printf("Sent %d bytes to %s on port %s\n", numbytes, target, port);
+  print_if_verbose("Sent %d bytes to %s on port %s\n", numbytes, target, port);
 
   addr_len = sizeof incoming_addr;
 
@@ -151,7 +163,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
     {
       if (iter == 0)
       {
-        printf("Did not receive response to RRQ within %d seconds.\n", DEFAULT_TIMEOUT_SECS);
+        print_if_verbose("Did not receive response to RRQ within %d seconds.\n", DEFAULT_TIMEOUT_SECS);
         exit(1);
       }
 
@@ -159,7 +171,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
       {
         if (retry_count < MAX_RETRIES)
         {
-          printf("  Timed out, ACKing again. Attempt %d\n", retry_count);
+          print_if_verbose("  Timed out, ACKing again. Attempt %d\n", retry_count);
           create_ack(block_num, ack_packet, ack_packet_size);
           send_packet(fd, ack_packet, ack_packet_size, (struct sockaddr *)&incoming_addr, addr_len, "RETRY ACK");
 
@@ -168,7 +180,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
         }
         else
         {
-          printf("Max retries reached. Exiting.\n");
+          print_if_verbose("Max retries reached. Exiting.\n");
           exit(1);
         }
       }
@@ -180,7 +192,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
     }
     recv_buffer[numbytes] = '\0';
 
-    printf("Received %d bytes from server\n", numbytes);
+    print_if_verbose("Received %d bytes from server\n", numbytes);
 
     int opcode = recv_buffer[1];
 
@@ -196,12 +208,12 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
 
     case 3:
     {
-      printf("- DATA packet\n");
+      print_if_verbose("- DATA packet\n");
       retry_count = 0;
 
       if (iter == 0 && options)
       {
-        printf("  Server rejected all options, proceeding WITHOUT OPTIONS.\n");
+        print_if_verbose("  Server rejected all options, proceeding WITHOUT OPTIONS.\n");
         WINDOWSIZE_OPTION = (int)NULL;
         BLOCKSIZE_OPTION = DEFAULT_BLOCKSIZE;
       }
@@ -217,7 +229,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
         create_ack(block_num, ack_packet, ack_packet_size);
         send_packet(fd, ack_packet, ack_packet_size, (struct sockaddr *)&incoming_addr, addr_len, "ACK");
 
-        printf("  ACKed: %d\n", block_num[1]);
+        print_if_verbose("  ACKed: %d\n", block_num[1]);
       }
       else
       {
@@ -231,12 +243,12 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
 
     case 5:
     {
-      printf("- ERROR packet\n");
+      print_if_verbose("- ERROR packet\n");
       int error_code = recv_buffer[3];
       char error_msg[strlen(recv_buffer + 4)];
       strcpy(error_msg, recv_buffer + 4);
 
-      printf("  Error: %s\n  Message: %s\n", ERROR_CODES[error_code], error_msg);
+      print_if_verbose("  Error: %s\n  Message: %s\n", ERROR_CODES[error_code], error_msg);
       break;
     }
 
@@ -245,15 +257,15 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
       if (iter == 0 && options)
       {
         is_oack = 1;
-        printf("- OACK\n");
+        print_if_verbose("- OACK\n");
         if (process_oack(recv_buffer, &BLOCKSIZE_OPTION, &WINDOWSIZE_OPTION) == 0)
         {
           // ACK with block num 0
-          printf("  options accepted and loaded\n");
+          print_if_verbose("  options accepted and loaded\n");
           create_ack("\0\0", ack_packet, ack_packet_size);
           send_packet(fd, ack_packet, ack_packet_size, (struct sockaddr *)&incoming_addr, addr_len, "ACK for OACK");
 
-          printf("  ACKed: 0\n");
+          print_if_verbose("  ACKed: 0\n");
         }
         else
         {
@@ -287,7 +299,7 @@ int main(int argc, char *argv[])
 {
   if (argc != 4)
   {
-    printf("Bad usage");
+    print_if_verbose("Bad usage");
     exit(2);
   }
 
@@ -295,7 +307,7 @@ int main(int argc, char *argv[])
   char *port = argv[2];
   char *file = argv[3];
 
-  printf("Getting %s from %s:%s\n", file, target, port);
+  print_if_verbose("Getting %s from %s:%s\n", file, target, port);
   // struct OPTION myOptions[2];
 
   // myOptions[0].name = "blksize";

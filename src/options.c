@@ -52,7 +52,7 @@ void set_option_flags(struct OPTION options[], int option_count, int *blocksize_
     }
     else
     {
-      printf("Error: unrecognized option '%s'\n", options[i].name);
+      print_if_verbose("Error: unrecognized option '%s'\n", options[i].name);
       exit(1);
     }
   }
@@ -75,7 +75,7 @@ int process_oack(char *oack, int *blocksize_ptr, int *windowsize_ptr)
 
     if (str_place > OACK_MAX_SIZE + 4 || strlen(oack + str_place) == 0)
     {
-      printf("Found option without corresponding value: %s\n", option);
+      print_if_verbose("Found option without corresponding value: %s\n", option);
       return 3;
     }
 
@@ -88,7 +88,7 @@ int process_oack(char *oack, int *blocksize_ptr, int *windowsize_ptr)
     {
       if (!*blocksize_ptr)
       {
-        printf("Got option in OACK that client did not request: %s\n", option);
+        print_if_verbose("Got option in OACK that client did not request: %s\n", option);
         return 2;
       }
       else
@@ -97,7 +97,7 @@ int process_oack(char *oack, int *blocksize_ptr, int *windowsize_ptr)
 
         if (server_val != *blocksize_ptr)
         {
-          printf("NOTE: Server overwrote option: %s from %d to %d\n", option, *blocksize_ptr, server_val);
+          print_if_verbose("NOTE: Server overwrote option: %s from %d to %d\n", option, *blocksize_ptr, server_val);
           *blocksize_ptr = server_val;
         }
       }
@@ -106,7 +106,7 @@ int process_oack(char *oack, int *blocksize_ptr, int *windowsize_ptr)
     {
       if (!*windowsize_ptr)
       {
-        printf("Got option in OACK that client did not request: %s\n", option);
+        print_if_verbose("Got option in OACK that client did not request: %s\n", option);
         return 2;
       }
       else
@@ -115,14 +115,14 @@ int process_oack(char *oack, int *blocksize_ptr, int *windowsize_ptr)
 
         if (server_val != *windowsize_ptr)
         {
-          printf("NOTE: Server overwrote option: %s from %d to %d\n", option, *windowsize_ptr, server_val);
+          print_if_verbose("NOTE: Server overwrote option: %s from %d to %d\n", option, *windowsize_ptr, server_val);
           *windowsize_ptr = server_val;
         }
       }
     }
     else
     {
-      printf("Got unknown option in OACK: %s\n", option);
+      print_if_verbose("Got unknown option in OACK: %s\n", option);
       return 1;
     }
   }
