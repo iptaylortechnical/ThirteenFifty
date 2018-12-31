@@ -15,5 +15,3 @@ void set_option_flags(struct OPTION options[], int option_count, int *blocksize_
 int process_oack(char *oack, int *blocksize_ptr, int *windowsize_ptr);
 
 void create_oack_err(char *error, int error_length);
-
-

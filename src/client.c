@@ -10,6 +10,8 @@
 
 #include "client.h"
 
+int VERBOSITY = DEFAULT_VERBOSITY;
+
 char *ERROR_CODES[] = {
     "Not defined, see error message (if any).",
     "File not found.",
@@ -32,7 +34,7 @@ void print_if_verbose(char *format, ...)
   }
 }
 
-int socket_setup(char *target, char *port, struct addrinfo *hts, struct addrinfo *info, struct addrinfo **temp_sock)
+int socket_setup(char *target, char *port, struct addrinfo *hts, struct addrinfo *info, struct addrinfo **temp_sock, int timeout_secs)
 {
 
   int fd;
@@ -56,7 +58,7 @@ int socket_setup(char *target, char *port, struct addrinfo *hts, struct addrinfo
 
   // Configure socket timeout
   struct timeval timeout;
-  timeout.tv_sec = DEFAULT_TIMEOUT_SECS;
+  timeout.tv_sec = timeout_secs;
   timeout.tv_usec = 0;
   if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0)
   {
@@ -103,14 +105,14 @@ int send_packet(int fd, char *ack_packet, int ack_packet_size, struct sockaddr *
   return acknumbytes;
 }
 
-int get(char *target, char *port, char *filename, struct OPTION options[], int option_count)
+int get(char *target, char *port, char *filename, int timeout_secs, struct OPTION options[], int option_count)
 {
   // Initializing options
   int BLOCKSIZE_OPTION = DEFAULT_BLOCKSIZE;
   int WINDOWSIZE_OPTION = (int)NULL;
   int error_length = 2 + 2 + strlen(ERROR_CODES[7]) + 1;
   int option_length = 0;
-  if (options)
+  if (option_count)
   {
     option_length = find_option_length(options, option_count);
     set_option_flags(options, option_count, &BLOCKSIZE_OPTION, &WINDOWSIZE_OPTION);
@@ -137,11 +139,11 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
   char *ack_packet = malloc(ack_packet_size);
 
   // Configuring socket
-  fd = socket_setup(target, port, &hts, info, &temp_sock);
+  fd = socket_setup(target, port, &hts, info, &temp_sock, timeout_secs);
 
   // create RRQ
   int rrq_raw_len = create_rrq(filename, rrq_packet, rrq_packet_size);
-  if (options)
+  if (option_count)
     create_options(rrq_packet, rrq_raw_len, options, option_count);
 
   // send RRQ
@@ -161,7 +163,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
     { // Handle recvfrom failure
       if (iter == 0)
       {
-        print_if_verbose("Did not receive response to RRQ within %d seconds.\n", DEFAULT_TIMEOUT_SECS);
+        print_if_verbose("Did not receive response to RRQ within %d seconds.\n", timeout_secs);
         exit(1);
       }
 
@@ -208,7 +210,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
       print_if_verbose("- DATA packet\n");
       retry_count = 0;
 
-      if (iter == 0 && options)
+      if (iter == 0 && option_count)
       { // DATA packet after options RRQ means server doesn't have option extension
         print_if_verbose("  Server rejected all options, proceeding WITHOUT OPTIONS.\n");
         WINDOWSIZE_OPTION = (int)NULL;
@@ -251,7 +253,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
 
     case 6:
     {
-      if (iter == 0 && options)
+      if (iter == 0 && option_count)
       { // Handle options ACK
         is_oack = 1;
         print_if_verbose("- OACK\n");
@@ -294,25 +296,129 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
 
 int main(int argc, char *argv[])
 {
-  if (argc != 4)
+
+  char c;
+  int window_silence = 0;
+  int block_silence = 0;
+
+  char port[6];
+  memset(port, 0, 6);
+  strncpy(port, INIT_PORT, strlen(INIT_PORT));
+
+  int use_blocksize = 0;
+  // int blocksize_input;
+  char blocksize_input[6];
+  memset(blocksize_input, 0, 6);
+
+
+  int use_windowsize = 0;
+  // int windowsize_input;
+  char windowsize_input[3];
+  memset(windowsize_input, 0, 3);
+
+  int timeout_secs = DEFAULT_TIMEOUT_SECS;
+
+  while ((c = getopt(argc, argv, "hHVWBp:b:w:t:")) != -1)
   {
-    print_if_verbose("Bad usage");
-    exit(2);
+    switch (c)
+    {
+    case 'h':
+      fprintf(stderr, USAGE);
+      exit(0);
+      break;
+    case 'H':
+      fprintf(stderr, USAGE);
+      exit(0);
+      break;
+    case 'V':
+      VERBOSITY = 1;
+      print_if_verbose("VERBOSE MODE: ON\n");
+      break;
+    case 'W':
+      window_silence = 1;
+      break;
+    case 'B':
+      block_silence = 1;
+      break;
+    case 'p':
+      if (strlen(optarg) < 1 || strlen(optarg) > 5 ||
+          strtol(optarg, (char **)NULL, 10) < 0 ||
+          strtol(optarg, (char **)NULL, 10) > 65535)
+      {
+        fprintf(stderr, "Bad port number: %s\n", optarg);
+        fprintf(stderr, USAGE);
+        exit(1);
+      }
+      strncpy(port, optarg, 5);
+      break;
+    case 'b':
+      if (strlen(optarg) < 1 || strlen(optarg) > 5 ||
+          strtol(optarg, (char **)NULL, 10) < 0)
+      {
+        fprintf(stderr, "Bad blocksize: %s\n", optarg);
+        fprintf(stderr, USAGE);
+        exit(1);
+      }
+      strncpy(blocksize_input, optarg, 5);      
+      use_blocksize = 1;
+      break;
+    case 'w':
+      if (strlen(optarg) < 1 || strlen(optarg) > 2 ||
+          strtol(optarg, (char **)NULL, 10) < 0)
+      {
+        fprintf(stderr, "Bad windowsize: %s\n", optarg);
+        fprintf(stderr, USAGE);
+        exit(1);
+      }
+      strncpy(windowsize_input, optarg, 2);      
+      use_windowsize = 1;
+      break;
+    case 't':
+      if (strlen(optarg) < 1 || strlen(optarg) > 2 ||
+          strtol(optarg, (char **)NULL, 10) < 0)
+      {
+        fprintf(stderr, "Bad timeout: %s\n", optarg);
+        fprintf(stderr, USAGE);
+        exit(1);
+      }
+      timeout_secs = (int)strtol(optarg, (char **)NULL, 10);
+      break;
+    }
   }
 
-  char *target = argv[1];
-  char *port = argv[2];
-  char *file = argv[3];
+  if (strlen(argv[optind]) < 1 || strlen(argv[optind + 1]) < 1)
+  {
+    fprintf(stderr, "Bad Usage, missing target or filename.");
+    fprintf(stderr, USAGE);
+    exit(1);
+  }
+
+  char *target = argv[optind];
+  char *file = argv[optind + 1];
 
   print_if_verbose("Getting %s from %s:%s\n", file, target, port);
-  // struct OPTION myOptions[2];
 
-  // myOptions[0].name = "blksize";
-  // myOptions[0].value = "1024";
-  // myOptions[0].silent = 0;
+  int options_total = use_blocksize + use_windowsize;
 
-  // myOptions[1].name = "windowsize";
-  // myOptions[1].value = "4";
-  // myOptions[1].silent = 0;
-  get(target, port, file, NULL, 0);
+  struct OPTION myOptions[options_total];
+  memset(myOptions, 0, sizeof myOptions);
+
+  int current_index = 0;
+
+  if (use_blocksize)
+  {
+    myOptions[current_index].name = "blksize";
+    myOptions[current_index].value = blocksize_input;
+    myOptions[current_index].silent = block_silence;
+    current_index++;
+  }
+
+  if (use_windowsize)
+  {
+    myOptions[current_index].name = "windowsize";
+    myOptions[current_index].value = windowsize_input;
+    myOptions[current_index].silent = window_silence;
+  }
+
+  get(target, port, file, timeout_secs, myOptions, options_total);
 }

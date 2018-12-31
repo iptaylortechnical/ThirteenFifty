@@ -21,7 +21,7 @@ void create_options(char *rrq_ptr, int rrq_raw_len, struct OPTION options[], int
 int find_option_length(struct OPTION options[], int option_count)
 {
 
-  if (!options)
+  if (!option_count)
     return 0;
 
   int option_length = 0;
