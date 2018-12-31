@@ -18,7 +18,7 @@ int socket_setup(char *target, char *port, struct addrinfo *hts, struct addrinfo
   if ((getaddrinfo(target, port, hts, &info)) != 0)
   {
     reporter(7);
-    fprintf(stderr, "Could not get address info.");
+    fprintf(stderr, "Could not get address info.\n");
     exit(1);
   }
   for ((*temp_sock) = info; (*temp_sock) != NULL; (*temp_sock) = (*temp_sock)->ai_next)
@@ -31,7 +31,7 @@ int socket_setup(char *target, char *port, struct addrinfo *hts, struct addrinfo
   if (*temp_sock == NULL)
   {
     reporter(8);
-    fprintf(stderr, "Could not create a socket with those DNS addresses.");
+    fprintf(stderr, "Could not create a socket with those DNS addresses.\n");
     exit(2);
   }
 
