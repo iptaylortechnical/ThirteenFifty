@@ -297,8 +297,6 @@ int get(char *target, char *port, char *filename, int timeout_secs, struct OPTIO
 
 int main(int argc, char *argv[])
 {
-
-  char c;
   int window_silence = 0;
   int block_silence = 0;
 
@@ -318,6 +316,7 @@ int main(int argc, char *argv[])
 
   int timeout_secs = DEFAULT_TIMEOUT_SECS;
 
+  signed char c; // Explicitly declaring signed because this is not the case in arm
   while ((c = getopt(argc, argv, "hHVWBp:b:w:t:")) != -1)
   {
     switch (c)
@@ -393,7 +392,7 @@ int main(int argc, char *argv[])
   if (argc <= optind)
   {
     reporter(5);
-    fprintf(stderr, "Bad Usage, missing target or filename.");
+    fprintf(stderr, "Bad Usage, missing target or filename.\n");
     fprintf(stderr, USAGE);
     exit(1);
   }
@@ -401,7 +400,7 @@ int main(int argc, char *argv[])
   if (strlen(argv[optind]) < 1 || strlen(argv[optind + 1]) < 1)
   {
     reporter(5);
-    fprintf(stderr, "Bad Usage, missing target or filename.");
+    fprintf(stderr, "Bad Usage, missing target or filename.\n");
     fprintf(stderr, USAGE);
     exit(1);
   }
