@@ -17,6 +17,7 @@
 #define ERR_OPCODE 5
 #define OAC_OPCODE 6
 
+// Default settings
 #define MODE "NETASCII"
 #define INIT_PORT "69"
 #define DEFAULT_BLOCKSIZE 512

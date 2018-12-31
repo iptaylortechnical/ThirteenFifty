@@ -123,7 +123,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
   hts.ai_family = AF_UNSPEC;
   hts.ai_socktype = SOCK_DGRAM;
   struct sockaddr_storage incoming_addr;
-  socklen_t addr_len;
+  socklen_t addr_len = sizeof incoming_addr;
   int buffer_length = (BLOCKSIZE_OPTION ? BLOCKSIZE_OPTION : DEFAULT_BLOCKSIZE) + 38;
   char recv_buffer[buffer_length];
   char block_num[2];
@@ -144,11 +144,9 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
   if (options)
     create_options(rrq_packet, rrq_raw_len, options, option_count);
 
-  // send out RRQ
+  // send RRQ
   numbytes = send_packet(fd, rrq_packet, rrq_packet_size, temp_sock->ai_addr, temp_sock->ai_addrlen, "RRQ");
   print_if_verbose("Sent %d bytes to %s on port %s\n", numbytes, target, port);
-
-  addr_len = sizeof incoming_addr;
 
   // loop: listen for DATA, send ACK
   int iter = 0;
@@ -160,7 +158,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
     is_oack = 0;
 
     if ((numbytes = recvfrom(fd, recv_buffer, buffer_length - 1, 0, (struct sockaddr *)&incoming_addr, &addr_len)) == -1)
-    {
+    { // Handle recvfrom failure
       if (iter == 0)
       {
         print_if_verbose("Did not receive response to RRQ within %d seconds.\n", DEFAULT_TIMEOUT_SECS);
@@ -190,14 +188,13 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
         exit(1);
       }
     }
-    recv_buffer[numbytes] = '\0';
-
     print_if_verbose("Received %d bytes from server\n", numbytes);
 
+    recv_buffer[numbytes] = '\0';
     int opcode = recv_buffer[1];
 
     switch (opcode)
-    {
+    { // Respond to packet based on what kind it is
     case 1:
       continue;
       break;
@@ -212,7 +209,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
       retry_count = 0;
 
       if (iter == 0 && options)
-      {
+      { // DATA packet after options RRQ means server doesn't have option extension
         print_if_verbose("  Server rejected all options, proceeding WITHOUT OPTIONS.\n");
         WINDOWSIZE_OPTION = (int)NULL;
         BLOCKSIZE_OPTION = DEFAULT_BLOCKSIZE;
@@ -255,7 +252,7 @@ int get(char *target, char *port, char *filename, struct OPTION options[], int o
     case 6:
     {
       if (iter == 0 && options)
-      {
+      { // Handle options ACK
         is_oack = 1;
         print_if_verbose("- OACK\n");
         if (process_oack(recv_buffer, &BLOCKSIZE_OPTION, &WINDOWSIZE_OPTION) == 0)
