@@ -390,6 +390,14 @@ int main(int argc, char *argv[])
     }
   }
 
+  if (argc <= optind)
+  {
+    reporter(5);
+    fprintf(stderr, "Bad Usage, missing target or filename.");
+    fprintf(stderr, USAGE);
+    exit(1);
+  }
+
   if (strlen(argv[optind]) < 1 || strlen(argv[optind + 1]) < 1)
   {
     reporter(5);
