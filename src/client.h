@@ -43,6 +43,7 @@ Usage: ntftp [-options] target filename\n\
 #define MAX_RETRIES 4
 #define DEFAULT_TIMEOUT_SECS 1
 #define DEFAULT_VERBOSITY 0
+#define REPORTING 1
 
 char *ERROR_CODES[9];
 
@@ -52,3 +53,4 @@ char *ERROR_CODES[9];
 
 int get(char* target, char* port, char* filename, int timeout_secs, struct OPTION options[], int option_count);
 void print_if_verbose(char *format, ...);
+void reporter(int error_number);

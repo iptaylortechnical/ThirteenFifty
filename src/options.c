@@ -53,7 +53,8 @@ void set_option_flags(struct OPTION options[], int option_count, int *blocksize_
     }
     else
     {
-      print_if_verbose("Error: unrecognized option '%s'\n", options[i].name);
+      reporter(6);
+      fprintf(stderr, "Error: unrecognized option: '%s'\n", options[i].name);
       exit(1);
     }
   }
@@ -76,7 +77,8 @@ int process_oack(char *oack, int *blocksize_ptr, int *windowsize_ptr)
 
     if (str_place > OACK_MAX_SIZE + 4 || strlen(oack + str_place) == 0)
     {
-      print_if_verbose("Found option without corresponding value: %s\n", option);
+      reporter(26);
+      fprintf(stderr, "Found option without corresponding value: '%s'\n", option);
       return 3;
     }
 
@@ -89,7 +91,8 @@ int process_oack(char *oack, int *blocksize_ptr, int *windowsize_ptr)
     {
       if (!*blocksize_ptr)
       {
-        print_if_verbose("Got option in OACK that client did not request: %s\n", option);
+        reporter(27);
+        fprintf(stderr, "Got option in OACK that client did not request: '%s'\n", option);
         return 2;
       }
       else
@@ -107,7 +110,8 @@ int process_oack(char *oack, int *blocksize_ptr, int *windowsize_ptr)
     {
       if (!*windowsize_ptr)
       {
-        print_if_verbose("Got option in OACK that client did not request: %s\n", option);
+        reporter(28);
+        fprintf(stderr, "Got option in OACK that client did not request: %s\n", option);
         return 2;
       }
       else
@@ -123,7 +127,8 @@ int process_oack(char *oack, int *blocksize_ptr, int *windowsize_ptr)
     }
     else
     {
-      print_if_verbose("Got unknown option in OACK: %s\n", option);
+      reporter(29);
+      fprintf(stderr, "Got unknown option in OACK: '%s'\n", option);
       return 1;
     }
   }
