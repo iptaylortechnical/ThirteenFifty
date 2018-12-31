@@ -1,7 +1,5 @@
-GCC?=gcc
-
 all: client
 
 client:
 	mkdir -p bin
-	$(GCC) -g src/*.c -o bin/ntftp
+	$(CC) -g src/*.c -o bin/ntftp
