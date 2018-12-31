@@ -4,6 +4,7 @@
 
 #include "options.h"
 #include "client.h"
+#include "output.h"
 
 void create_options(char *rrq_ptr, int rrq_raw_len, struct OPTION options[], int option_count)
 {

@@ -6,42 +6,10 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
-#include <stdarg.h>
+#include <sys/time.h>
 
 #include "client.h"
-
-int VERBOSITY = DEFAULT_VERBOSITY;
-
-char *ERROR_CODES[] = {
-    "Not defined, see error message (if any).",
-    "File not found.",
-    "Access violation.",
-    "Disk full or allocation exceeded.",
-    "Illegal TFTP operation.",
-    "Unknown transfer ID.",
-    "File already exists.",
-    "No such user.",
-    "Options refused."};
-
-void print_if_verbose(char *format, ...)
-{
-  if (VERBOSITY)
-  {
-    va_list printargs;
-    va_start(printargs, format);
-    vprintf(format, printargs);
-    va_end(printargs);
-  }
-}
-
-void reporter(int error_number)
-{
-  if (REPORTING)
-  {
-    printf("{{err:%d}}\n", error_number);
-    fprintf(stderr, "{{err:%d}}\n", error_number);
-  }
-}
+#include "output.h"
 
 int socket_setup(char *target, char *port, struct addrinfo *hts, struct addrinfo *info, struct addrinfo **temp_sock, int timeout_secs)
 {
@@ -120,6 +88,11 @@ int send_packet(int fd, char *ack_packet, int ack_packet_size, struct sockaddr *
 
 int get(char *target, char *port, char *filename, int timeout_secs, struct OPTION options[], int option_count)
 {
+  // Setting up measurements
+  struct timeval tval_before, tval_after, tval_result;
+  long int total_bytes = 0;
+  int first_data = 1;
+
   // Initializing options
   int BLOCKSIZE_OPTION = DEFAULT_BLOCKSIZE;
   int WINDOWSIZE_OPTION = (int)NULL;
@@ -142,7 +115,7 @@ int get(char *target, char *port, char *filename, int timeout_secs, struct OPTIO
   int buffer_length = (BLOCKSIZE_OPTION ? BLOCKSIZE_OPTION : DEFAULT_BLOCKSIZE) + 38;
   char recv_buffer[buffer_length];
   char block_num[2];
-  int numbytes;
+  int numbytes = 0;
   int acknumbytes;
 
   // Allocating packet buffers
@@ -225,6 +198,12 @@ int get(char *target, char *port, char *filename, int timeout_secs, struct OPTIO
     {
       print_if_verbose("- DATA packet\n");
       retry_count = 0;
+      total_bytes += numbytes - 4;
+
+      if (first_data)
+        gettimeofday(&tval_before, NULL);
+
+      first_data = 0;
 
       if (iter == 0 && option_count)
       { // DATA packet after options RRQ means server doesn't have option extension
@@ -262,7 +241,7 @@ int get(char *target, char *port, char *filename, int timeout_secs, struct OPTIO
       int error_code = recv_buffer[3];
       char error_msg[strlen(recv_buffer + 4)];
       strcpy(error_msg, recv_buffer + 4);
-      reporter(15+error_code);
+      reporter(15 + error_code);
       fprintf(stderr, "  Error: %s\n  Message: %s\n", ERROR_CODES[error_code], error_msg);
       exit(1);
       break;
@@ -307,6 +286,11 @@ int get(char *target, char *port, char *filename, int timeout_secs, struct OPTIO
 
   free(rrq_packet);
   free(ack_packet);
+
+  gettimeofday(&tval_after, NULL);
+  timersub(&tval_after, &tval_before, &tval_result);
+
+  print_statistics(&tval_result, total_bytes);
 
   return 0;
 }
