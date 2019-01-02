@@ -11,6 +11,11 @@
 #include "client.h"
 #include "output.h"
 
+int blocknum_int(char a, char b)
+{
+  return (int)(((short)a) << 8) | (0x00ff & b);
+}
+
 int socket_setup(char *target, char *port, struct addrinfo *hts, struct addrinfo *info, struct addrinfo **temp_sock, int timeout_secs)
 {
 
@@ -112,11 +117,18 @@ int get(char *target, char *port, char *filename, int timeout_secs, struct OPTIO
   hts.ai_socktype = SOCK_DGRAM;
   struct sockaddr_storage incoming_addr;
   socklen_t addr_len = sizeof incoming_addr;
+  
+  // Initializing loop
   int buffer_length = (BLOCKSIZE_OPTION ? BLOCKSIZE_OPTION : DEFAULT_BLOCKSIZE) + 38;
   char recv_buffer[buffer_length];
+  char last_block_num[2];
   char block_num[2];
+  int block_int;
+  int last_block_int;
+  int last_valid_block_int = 1;
   int numbytes = 0;
   int acknumbytes;
+  int transfer_errors = 0;
 
   // Allocating packet buffers
   size_t rrq_packet_size = 2 + strlen(filename) + 1 + strlen(MODE) + 1 + option_length;
@@ -141,12 +153,15 @@ int get(char *target, char *port, char *filename, int timeout_secs, struct OPTIO
   int window_iter = 1;
   int is_oack = 0;
   int retry_count = 0;
+  int redemption_run = 0;
   do
   {
+    print_if_verbose("\n");
     is_oack = 0;
 
     if ((numbytes = recvfrom(fd, recv_buffer, buffer_length - 1, 0, (struct sockaddr *)&incoming_addr, &addr_len)) == -1)
     { // Handle recvfrom failure
+      transfer_errors++;
       if (iter == 0)
       {
         reporter(11);
@@ -158,7 +173,7 @@ int get(char *target, char *port, char *filename, int timeout_secs, struct OPTIO
       {
         if (retry_count < MAX_RETRIES)
         {
-          print_if_verbose("  Timed out, ACKing again. Attempt %d\n", retry_count);
+          print_if_verbose("  Timed out, ACKing again. Attempt %d. ACKED: %d\n", retry_count, block_num[1]);
           create_ack(block_num, ack_packet, ack_packet_size);
           send_packet(fd, ack_packet, ack_packet_size, (struct sockaddr *)&incoming_addr, addr_len, "RETRY ACK", 14);
 
@@ -198,7 +213,6 @@ int get(char *target, char *port, char *filename, int timeout_secs, struct OPTIO
     {
       print_if_verbose("- DATA packet\n");
       retry_count = 0;
-      total_bytes += numbytes - 4;
 
       if (first_data)
         gettimeofday(&tval_before, NULL);
@@ -212,18 +226,54 @@ int get(char *target, char *port, char *filename, int timeout_secs, struct OPTIO
         BLOCKSIZE_OPTION = DEFAULT_BLOCKSIZE;
       }
 
+      block_num[0] = recv_buffer[2];
+      block_num[1] = recv_buffer[3];
+
+      block_int = blocknum_int(block_num[0], block_num[1]);
+
+      print_if_verbose("  BLOCK: %d\n", block_int);
+      print_if_verbose("  last valid: %d\n", last_valid_block_int);
+
+      if (block_int != last_valid_block_int + 1)
+      {
+        transfer_errors++;
+        char new_block_num[2];
+        short shorter_block_num = htons(last_valid_block_int);
+
+        *((short*)new_block_num) = shorter_block_num;
+
+        if (!redemption_run)
+        {
+          window_iter = 1;
+          // Send the ACK
+          create_ack(new_block_num, ack_packet, ack_packet_size);
+          send_packet(fd, ack_packet, ack_packet_size, (struct sockaddr *)&incoming_addr, addr_len, "ACK", 15);
+          print_if_verbose("    redemption ACKED %d\n", new_block_num[1]);
+          redemption_run = 1;
+          continue;
+        } else {
+          window_iter = 1;
+          continue;
+        }
+      }
+      else
+      {
+        print_if_verbose("stored\n");
+        last_valid_block_int = block_int;
+        total_bytes += numbytes - 4;
+        redemption_run = 0;
+      }
+
+      last_block_num[0] = block_num[0];
+      last_block_num[1] = block_num[1];
+
       if (window_iter >= WINDOWSIZE_OPTION)
       {
         window_iter = 1;
         // Send the ACK
-
-        block_num[0] = recv_buffer[2];
-        block_num[1] = recv_buffer[3];
-
         create_ack(block_num, ack_packet, ack_packet_size);
         send_packet(fd, ack_packet, ack_packet_size, (struct sockaddr *)&incoming_addr, addr_len, "ACK", 15);
-
-        print_if_verbose("  ACKed: %d\n", block_num[1]);
+        print_if_verbose("    ACKED %d\n", block_num[1]);
       }
       else
       {
@@ -259,7 +309,7 @@ int get(char *target, char *port, char *filename, int timeout_secs, struct OPTIO
           print_if_verbose("  options accepted and loaded\n");
           create_ack("\0\0", ack_packet, ack_packet_size);
           send_packet(fd, ack_packet, ack_packet_size, (struct sockaddr *)&incoming_addr, addr_len, "ACK for OACK", 30);
-
+          last_valid_block_int = 0;
           print_if_verbose("  ACKed: 0\n");
         }
         else
@@ -290,7 +340,7 @@ int get(char *target, char *port, char *filename, int timeout_secs, struct OPTIO
   gettimeofday(&tval_after, NULL);
   timersub(&tval_after, &tval_before, &tval_result);
 
-  print_statistics(&tval_result, total_bytes);
+  print_statistics(&tval_result, total_bytes, transfer_errors);
 
   return 0;
 }

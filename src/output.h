@@ -32,4 +32,4 @@ void print_if_verbose(char *format, ...);
 
 void reporter(int error_number);
 
-void print_statistics(struct timeval *result, long int total_bytes);
+void print_statistics(struct timeval *result, long int total_bytes, int transfer_errors);
