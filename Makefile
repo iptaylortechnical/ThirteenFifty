@@ -6,3 +6,7 @@ client:
 
 clean:
 	rm -rf bin
+
+install:
+	cp ./bin/ntftp $(TEMP_RFS)/bin
+	
